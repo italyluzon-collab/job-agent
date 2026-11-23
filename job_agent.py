@@ -7,7 +7,7 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 SEEN_FILE = "seen_jobs.json"
 
-SEARCH_TERMS = ["VLSI", "Chip Design", "RTL", "Design Verification , "design"]
+SEARCH_TERMS = ["VLSI", "Chip Design", "RTL", "Design Verification" , "design"]
 LOCATION = "Israel"
 EXCLUDE_KEYWORDS = ["senior", "principal", "staff", "lead", "manager", "director"]
 HOURS_OLD = 24
