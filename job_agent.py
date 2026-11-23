@@ -70,12 +70,8 @@ WORKDAY_COMPANIES = [
     },
 ]
 
-COMEET_COMPANIES = [
-    # דוגמה להוספת חברה מ-Comeet (Hailo, NextSilicon, Valens, Veriest):
-    # {"name": "Hailo", "uid": "COMPANY_UID", "token": "PUBLIC_TOKEN"},
-]
-
 CUSTOM_SITE_COMPANIES = [
+    "Qualcomm",
     "Cisco",
     "RAD",
     "Mobileye",
@@ -94,6 +90,7 @@ CUSTOM_SITE_COMPANIES = [
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json",
+    "Content-Type": "application/json",
 }
 
 
@@ -117,7 +114,17 @@ def send_telegram_message(text):
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
-    requests.post(url, json=payload, timeout=10)
+    for attempt in range(2):
+        try:
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code == 200:
+                time.sleep(0.5)
+                return True
+            time.sleep(2)
+        except Exception as e:
+            print(f"Telegram send error (attempt {attempt + 1}): {e}")
+            time.sleep(2)
+    return False
 
 
 def extract_min_years(description):
@@ -159,11 +166,11 @@ def fetch_linkedin_jobs():
                 site_name=["linkedin"],
                 search_term=term,
                 location=LOCATION,
-                results_wanted=15,
+                results_wanted=10,
                 hours_old=HOURS_OLD,
-                linkedin_fetch_description=True,
+                fetch_description=True,
             )
-            time.sleep(1)
+            time.sleep(3)
         except Exception as e:
             print(f"LinkedIn error ({term}): {e}")
             continue
@@ -210,53 +217,9 @@ def fetch_workday_jobs():
                     "description": "",
                     "check_role": True,
                 })
+            time.sleep(2)
         except Exception as e:
             print(f"Workday error ({company['name']}): {e}")
-    return results
-
-
-def fetch_comeet_jobs():
-    results = []
-    for company in COMEET_COMPANIES:
-        try:
-            url = f"https://www.comeet.co/careers-api/2.0/company/{company['uid']}/positions"
-            params = {"token": company["token"], "details": "false"}
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
-            resp.raise_for_status()
-            for job in resp.json():
-                loc = (job.get("location") or {}).get("name", "Israel")
-                results.append({
-                    "title": job.get("name", ""),
-                    "company": company["name"],
-                    "location": loc,
-                    "url": job.get("position_url", ""),
-                    "description": "",
-                    "check_role": True,
-                })
-        except Exception as e:
-            print(f"Comeet error ({company['name']}): {e}")
-    return results
-
-
-def fetch_qualcomm_jobs():
-    results = []
-    try:
-        url = "https://careers.qualcomm.com/api/apply/v2/jobs"
-        params = {"domain": "qualcomm.com", "location": "Israel", "start": 0, "num": 20}
-        resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        positions = resp.json().get("positions", [])
-        for job in positions:
-            results.append({
-                "title": job.get("name", ""),
-                "company": "Qualcomm",
-                "location": job.get("location", "Israel"),
-                "url": job.get("canonicalPositionUrl", ""),
-                "description": "",
-                "check_role": True,
-            })
-    except Exception as e:
-        print(f"Qualcomm error: {e}")
     return results
 
 
@@ -270,9 +233,9 @@ def fetch_custom_company_jobs():
                 location=LOCATION,
                 results_wanted=5,
                 hours_old=HOURS_OLD,
-                linkedin_fetch_description=True,
+                fetch_description=False,
             )
-            time.sleep(1.5)
+            time.sleep(2.5)
             if jobs.empty:
                 continue
             for _, row in jobs.iterrows():
@@ -284,7 +247,7 @@ def fetch_custom_company_jobs():
                     "company": comp_name,
                     "location": str(row.get("location", "")),
                     "url": str(row.get("job_url", "")),
-                    "description": str(row.get("description", "")),
+                    "description": "",
                     "check_role": True,
                 })
         except Exception as e:
@@ -296,34 +259,33 @@ def run_agent():
     seen_jobs = load_seen_jobs()
     new_jobs_count = 0
 
-    all_jobs = (
-        fetch_linkedin_jobs()
-        + fetch_workday_jobs()
-        + fetch_comeet_jobs()
-        + fetch_qualcomm_jobs()
-        + fetch_custom_company_jobs()
-    )
-
-    for job in all_jobs:
-        job_url = job["url"]
-        if not job_url or job_url in seen_jobs:
-            continue
-
-        if not is_relevant(job["title"], job["description"], check_role=job["check_role"]):
-            continue
-
-        message = (
-            f"<b>{job['title']}</b>\n"
-            f"Company: {job['company']}\n"
-            f"Location: {job['location']}\n"
-            f"<a href='{job_url}'>Apply / View Job</a>"
+    try:
+        all_jobs = (
+            fetch_linkedin_jobs()
+            + fetch_workday_jobs()
+            + fetch_custom_company_jobs()
         )
-        send_telegram_message(message)
-        seen_jobs.add(job_url)
-        new_jobs_count += 1
 
-    save_seen_jobs(seen_jobs)
-    print(f"Done. Sent {new_jobs_count} new jobs.")
+        for job in all_jobs:
+            job_url = job["url"]
+            if not job_url or job_url in seen_jobs:
+                continue
+
+            if not is_relevant(job["title"], job["description"], check_role=job["check_role"]):
+                continue
+
+            message = (
+                f"<b>{job['title']}</b>\n"
+                f"Company: {job['company']}\n"
+                f"Location: {job['location']}\n"
+                f"<a href='{job_url}'>Apply / View Job</a>"
+            )
+            if send_telegram_message(message):
+                seen_jobs.add(job_url)
+                new_jobs_count += 1
+    finally:
+        save_seen_jobs(seen_jobs)
+        print(f"Done. Sent {new_jobs_count} new jobs.")
 
 
 if __name__ == "__main__":
