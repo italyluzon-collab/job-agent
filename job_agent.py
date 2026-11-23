@@ -174,4 +174,157 @@ def fetch_linkedin_jobs():
         for _, row in jobs.iterrows():
             results.append({
                 "title": str(row.get("title", "Unknown Role")),
-                "company": str(row.get("
+                "company": str(row.get("company", "Unknown Company")),
+                "location": str(row.get("location", "")),
+                "url": str(row.get("job_url", "")),
+                "description": str(row.get("description", "")),
+                "check_role": False,
+            })
+    return results
+
+
+def fetch_workday_jobs():
+    results = []
+    for company in WORKDAY_COMPANIES:
+        try:
+            payload = {
+                "appliedFacets": {},
+                "limit": 20,
+                "offset": 0,
+                "searchText": "Israel",
+            }
+            resp = requests.post(company["api_url"], json=payload, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            postings = resp.json().get("jobPostings", [])
+            for job in postings:
+                title = job.get("title", "")
+                loc = job.get("locationsText", "")
+                ext_path = job.get("externalPath", "")
+                if not ext_path or "israel" not in loc.lower():
+                    continue
+                results.append({
+                    "title": title,
+                    "company": company["name"],
+                    "location": loc,
+                    "url": f"{company['base_url']}{ext_path}",
+                    "description": "",
+                    "check_role": True,
+                })
+        except Exception as e:
+            print(f"Workday error ({company['name']}): {e}")
+    return results
+
+
+def fetch_comeet_jobs():
+    results = []
+    for company in COMEET_COMPANIES:
+        try:
+            url = f"https://www.comeet.co/careers-api/2.0/company/{company['uid']}/positions"
+            params = {"token": company["token"], "details": "false"}
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            for job in resp.json():
+                loc = (job.get("location") or {}).get("name", "Israel")
+                results.append({
+                    "title": job.get("name", ""),
+                    "company": company["name"],
+                    "location": loc,
+                    "url": job.get("position_url", ""),
+                    "description": "",
+                    "check_role": True,
+                })
+        except Exception as e:
+            print(f"Comeet error ({company['name']}): {e}")
+    return results
+
+
+def fetch_qualcomm_jobs():
+    results = []
+    try:
+        url = "https://careers.qualcomm.com/api/apply/v2/jobs"
+        params = {"domain": "qualcomm.com", "location": "Israel", "start": 0, "num": 20}
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        positions = resp.json().get("positions", [])
+        for job in positions:
+            results.append({
+                "title": job.get("name", ""),
+                "company": "Qualcomm",
+                "location": job.get("location", "Israel"),
+                "url": job.get("canonicalPositionUrl", ""),
+                "description": "",
+                "check_role": True,
+            })
+    except Exception as e:
+        print(f"Qualcomm error: {e}")
+    return results
+
+
+def fetch_custom_company_jobs():
+    results = []
+    for company in CUSTOM_SITE_COMPANIES:
+        try:
+            jobs = scrape_jobs(
+                site_name=["linkedin"],
+                search_term=company,
+                location=LOCATION,
+                results_wanted=5,
+                hours_old=HOURS_OLD,
+                linkedin_fetch_description=True,
+            )
+            time.sleep(1.5)
+            if jobs.empty:
+                continue
+            for _, row in jobs.iterrows():
+                comp_name = str(row.get("company", ""))
+                if company.lower() not in comp_name.lower():
+                    continue
+                results.append({
+                    "title": str(row.get("title", "Unknown Role")),
+                    "company": comp_name,
+                    "location": str(row.get("location", "")),
+                    "url": str(row.get("job_url", "")),
+                    "description": str(row.get("description", "")),
+                    "check_role": True,
+                })
+        except Exception as e:
+            print(f"{company} error: {e}")
+    return results
+
+
+def run_agent():
+    seen_jobs = load_seen_jobs()
+    new_jobs_count = 0
+
+    all_jobs = (
+        fetch_linkedin_jobs()
+        + fetch_workday_jobs()
+        + fetch_comeet_jobs()
+        + fetch_qualcomm_jobs()
+        + fetch_custom_company_jobs()
+    )
+
+    for job in all_jobs:
+        job_url = job["url"]
+        if not job_url or job_url in seen_jobs:
+            continue
+
+        if not is_relevant(job["title"], job["description"], check_role=job["check_role"]):
+            continue
+
+        message = (
+            f"<b>{job['title']}</b>\n"
+            f"Company: {job['company']}\n"
+            f"Location: {job['location']}\n"
+            f"<a href='{job_url}'>Apply / View Job</a>"
+        )
+        send_telegram_message(message)
+        seen_jobs.add(job_url)
+        new_jobs_count += 1
+
+    save_seen_jobs(seen_jobs)
+    print(f"Done. Sent {new_jobs_count} new jobs.")
+
+
+if __name__ == "__main__":
+    run_agent()
