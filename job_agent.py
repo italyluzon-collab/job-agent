@@ -9,7 +9,8 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 SEEN_FILE = "seen_jobs.json"
 
-SEARCH_TERMS = ["VLSI", "Chip Design", "RTL", "Design Verification", "Hardware Student"]
+SEARCH_TERMS = ["VLSI", "Chip Design", "RTL", "Design Verification", "Hardware Student","Validation",
+    "Algorithm","intern"]
 LOCATION = "Israel"
 HOURS_OLD = 24
 MAX_YEARS_EXPERIENCE = 2
@@ -27,8 +28,10 @@ JUNIOR_TITLE_KEYWORDS = [
 
 ROLE_KEYWORDS = [
     "vlsi", "chip", "rtl", "verification", "hardware", "silicon",
-    "asic", "fpga", "soc", "design", "firmware", "embedded",
-    "rf", "dsp", "electrical", "analog", "digital", "board", "dft", "physical"
+    "asic", "fpga", "soc", "design", "firmware", 
+    "rf", "dsp", "electrical", "analog", "digital", "board", "dft", "physical",
+    "validation", "post-silicon", "post silicon", "algorithm", "algorithms", "algo",
+    "signal processing"
 ]
 
 EXPERIENCE_PATTERNS = [
