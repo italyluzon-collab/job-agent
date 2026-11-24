@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import re
@@ -9,8 +10,16 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 SEEN_FILE = "seen_jobs.json"
 
-SEARCH_TERMS = ["VLSI", "Chip Design", "RTL", "Design Verification", "Hardware Student","Validation",
-    "Algorithm","intern"]
+SEARCH_TERMS = [
+    "VLSI",
+    "Chip Design",
+    "RTL",
+    "Design Verification",
+    "Hardware Student",
+    "Validation",
+    "Algorithm",
+    "intern",
+]
 LOCATION = "Israel"
 HOURS_OLD = 24
 MAX_YEARS_EXPERIENCE = 2
@@ -18,7 +27,8 @@ MAX_YEARS_EXPERIENCE = 2
 EXCLUDE_TITLE_KEYWORDS = [
     "senior", "sr.", "sr ", "principal", "staff", "lead", "manager",
     "director", "architect", "head of", "vp", "chief", "team leader",
-    "experienced", "expert", "specialist", " iii", " iv"
+    "experienced", "expert", "specialist", " iii", " iv",
+    "ux", "ui", "graphic", "product", "web", "interior", "fashion", "mechanical"
 ]
 
 JUNIOR_TITLE_KEYWORDS = [
@@ -28,7 +38,7 @@ JUNIOR_TITLE_KEYWORDS = [
 
 ROLE_KEYWORDS = [
     "vlsi", "chip", "rtl", "verification", "hardware", "silicon",
-    "asic", "fpga", "soc", "design", "firmware", 
+    "asic", "fpga", "soc", "design", "firmware",
     "rf", "dsp", "electrical", "analog", "digital", "board", "dft", "physical",
     "validation", "post-silicon", "post silicon", "algorithm", "algorithms", "algo",
     "signal processing"
@@ -296,9 +306,9 @@ def run_agent():
                 continue
 
             message = (
-                f"<b>{job['title']}</b>\n"
-                f"Company: {job['company']}\n"
-                f"Location: {job['location']}\n"
+                f"<b>{html.escape(job['title'])}</b>\n"
+                f"Company: {html.escape(job['company'])}\n"
+                f"Location: {html.escape(job['location'])}\n"
                 f"<a href='{clean_url}'>Apply / View Job</a>"
             )
             if send_telegram_message(message):
