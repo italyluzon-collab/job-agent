@@ -15,21 +15,29 @@ HOURS_OLD = 24
 MAX_YEARS_EXPERIENCE = 2
 
 EXCLUDE_TITLE_KEYWORDS = [
-    "senior", "sr.", "principal", "staff", "lead", "manager",
-    "director", "architect", "head of", "vp", "chief", "team leader"
+    "senior", "sr.", "sr ", "principal", "staff", "lead", "manager",
+    "director", "architect", "head of", "vp", "chief", "team leader",
+    "experienced", "expert", "specialist", " iii", " iv"
+]
+
+JUNIOR_TITLE_KEYWORDS = [
+    "student", "intern", "internship", "junior", "jr.", "jr ",
+    "graduate", "new grad", "entry", "סטודנט", "מתמחה", "בוגר", "ג'וניור"
 ]
 
 ROLE_KEYWORDS = [
     "vlsi", "chip", "rtl", "verification", "hardware", "silicon",
     "asic", "fpga", "soc", "design", "firmware", "embedded",
-    "rf", "dsp", "electrical", "analog", "digital", "board", "system"
+    "rf", "dsp", "electrical", "analog", "digital", "board", "dft", "physical"
 ]
 
 EXPERIENCE_PATTERNS = [
-    r"(\d+)\s*(?:\+|plus)?\s*(?:-\s*\d+\s*)?years?\s+(?:of\s+)?(?:\w+\s+){0,3}experience",
-    r"(?:at least|minimum(?:\s+of)?|min\.?)\s+(\d+)\s*(?:\+)?\s*years?",
+    r"(\d+)\s*(?:\+|plus)?\s*(?:-\s*\d+\s*)?(?:years?|yrs?)\b.{0,35}?\bexperience",
+    r"(?:at least|minimum(?:\s+of)?|min\.?|over|more than)\s+(\d+)\s*(?:\+)?\s*(?:years?|yrs?)\b",
+    r"experience\s*[:\-]?\s*(?:at least\s+|minimum\s+)?(\d+)\s*(?:\+)?\s*(?:-\s*\d+\s*)?(?:years?|yrs?)\b",
+    r"(\d+)\s*\+\s*(?:years?|yrs?)\b",
     r"(\d+)\s*(?:\+)?\s*(?:-\s*\d+\s*)?שנות\s+ניסיון",
-    r"ניסיון\s+של\s+(?:לפחות\s+)?(\d+)\s*(?:\+)?\s*שנים",
+    r"(?:ניסיון\s+של|מעל|לפחות)\s+(?:לפחות\s+)?(\d+)\s*(?:\+)?\s*(?:שנים|שנות)",
 ]
 
 WORKDAY_COMPANIES = [
@@ -106,6 +114,14 @@ def save_seen_jobs(seen_jobs):
         json.dump(list(seen_jobs), f, ensure_ascii=False, indent=2)
 
 
+def normalize_url(url):
+    return str(url).split("?")[0].strip()
+
+
+def make_job_key(company, title):
+    return f"{str(company).strip().lower()}|{str(title).strip().lower()}"
+
+
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
@@ -137,23 +153,26 @@ def extract_min_years(description):
     return min(found_years) if found_years else 0
 
 
-def is_relevant(title, description="", check_role=False):
+def is_relevant(title, description=""):
     title_lower = str(title).lower()
-    desc_lower = str(description).lower() if description and str(description) != "nan" else ""
+    desc_lower = str(description).lower() if description and str(description).lower() != "nan" else ""
 
     if any(word in title_lower for word in EXCLUDE_TITLE_KEYWORDS):
         return False
 
-    if check_role and not any(word in title_lower for word in ROLE_KEYWORDS):
+    if not any(word in title_lower for word in ROLE_KEYWORDS):
         return False
 
-    if any(word in title_lower for word in ["student", "intern", "graduate", "סטודנט", "בוגר"]):
+    if any(word in title_lower for word in JUNIOR_TITLE_KEYWORDS):
         return True
 
-    if desc_lower:
-        min_years = extract_min_years(desc_lower)
-        if min_years > MAX_YEARS_EXPERIENCE:
-            return False
+    # אם אין תיאור משרה, לא מאשרים אוטומטית תפקידים כלליים שלא ציינו סטודנט/ג'וניור בכותרת
+    if not desc_lower.strip():
+        return False
+
+    min_years = extract_min_years(desc_lower)
+    if min_years > MAX_YEARS_EXPERIENCE:
+        return False
 
     return True
 
@@ -185,7 +204,6 @@ def fetch_linkedin_jobs():
                 "location": str(row.get("location", "")),
                 "url": str(row.get("job_url", "")),
                 "description": str(row.get("description", "")),
-                "check_role": False,
             })
     return results
 
@@ -215,7 +233,6 @@ def fetch_workday_jobs():
                     "location": loc,
                     "url": f"{company['base_url']}{ext_path}",
                     "description": "",
-                    "check_role": True,
                 })
             time.sleep(2)
         except Exception as e:
@@ -248,7 +265,6 @@ def fetch_custom_company_jobs():
                     "location": str(row.get("location", "")),
                     "url": str(row.get("job_url", "")),
                     "description": "",
-                    "check_role": True,
                 })
         except Exception as e:
             print(f"{company} error: {e}")
@@ -267,21 +283,24 @@ def run_agent():
         )
 
         for job in all_jobs:
-            job_url = job["url"]
-            if not job_url or job_url in seen_jobs:
+            clean_url = normalize_url(job["url"])
+            job_key = make_job_key(job["company"], job["title"])
+
+            if not clean_url or clean_url in seen_jobs or job_key in seen_jobs:
                 continue
 
-            if not is_relevant(job["title"], job["description"], check_role=job["check_role"]):
+            if not is_relevant(job["title"], job["description"]):
                 continue
 
             message = (
                 f"<b>{job['title']}</b>\n"
                 f"Company: {job['company']}\n"
                 f"Location: {job['location']}\n"
-                f"<a href='{job_url}'>Apply / View Job</a>"
+                f"<a href='{clean_url}'>Apply / View Job</a>"
             )
             if send_telegram_message(message):
-                seen_jobs.add(job_url)
+                seen_jobs.add(clean_url)
+                seen_jobs.add(job_key)
                 new_jobs_count += 1
     finally:
         save_seen_jobs(seen_jobs)
